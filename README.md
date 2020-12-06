@@ -5,6 +5,6 @@
 
 A simple service proxy layer with downstream mocking capabilities inbuilt
 
-# core/registrar modules
+## core/registrar modules
 
-## Registrar modules consists of Service / API registration features
+- Registrar modules consists of Service / API registration features
