@@ -16,13 +16,20 @@ func main() {
 		log.Error(fmt.Sprintf("Error registering services :: %v", err))
 	} else {
 		log.Info(fmt.Sprintf("%v registered", service))
-		api, err := service.RegisterAPI("/helloworld", core.GET)
+		payload := core.Payload{"test": "complete", "test2": "complete"}
+		api, err := service.RegisterAPI("/helloworld", core.GET, payload)
 		if err != nil {
 			log.Error(fmt.Sprintf("Error registering api :: %v", err))
 		} else {
 			log.Info(fmt.Sprintf("%v registered with %v", api, service))
 		}
-		apiLatency, err := service.RegisterAPIWithLatency("/helloworldagain", core.GET, 10.2)
+		payload = core.Payload{"test2": "complete", "test": "complete"}
+
+		_, err = service.RegisterAPI("/helloworld", core.GET, payload)
+		if err != nil {
+			log.Error(fmt.Sprintf("Error registring the api :: %v", err))
+		}
+		apiLatency, err := service.RegisterAPIWithLatency("/slowhelloworld", core.GET, nil, 10.2)
 		if err != nil {
 			log.Error(fmt.Sprintf("Error registering api :: %v", err))
 		} else {
