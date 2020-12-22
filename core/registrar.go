@@ -1,11 +1,17 @@
 package core
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	json "encoding/json"
 	"fmt"
 )
 
 // Verb - Represent the HTTP Verb enum type
 type Verb int
+
+// Payload - Represent generic HTTP JSON payload
+type Payload map[string]interface{}
 
 // Service - Baseline struct for a mocker service
 type Service struct {
@@ -17,9 +23,10 @@ type Service struct {
 
 // API - Configure a mock api giving the URL and the http verb supported for the URL
 type API struct {
-	ID      string `json:"id"`
-	URL     string `json:"url"`
-	APIVerb Verb   `json:"api_verb"`
+	ID         string  `json:"id"`
+	URL        string  `json:"url"`
+	APIVerb    Verb    `json:"api_verb"`
+	APIPayload Payload `json:"api_payload"`
 }
 
 // APIWithLatency - Configure a mock api like base API struct but with simulated Latency
@@ -61,8 +68,8 @@ type ServiceRegistration interface {
 
 // APIRegistration - API Registration features
 type APIRegistration interface {
-	RegisterAPI(url string, httpVerb Verb) (*API, error)
-	RegisterAPIWithLatency(url string, httpVerb Verb) (*APIWithLatency, error)
+	RegisterAPI(url string, httpVerb Verb, payload Payload) (*API, error)
+	RegisterAPIWithLatency(url string, httpVerb Verb, payload Payload) (*APIWithLatency, error)
 }
 
 // Feature Implementations
@@ -71,12 +78,18 @@ type APIRegistration interface {
 // Core Features
 //
 
-func getServiceKey(name, version string) string {
-	return name + "." + version
+// InterfaceToJSONString - converts to a JSON string
+func InterfaceToJSONString(data interface{}) (*string, error) {
+	dataBytes, err := json.MarshalIndent(data, "", " ")
+	if err != nil {
+		return nil, err
+	}
+	dataJSON := string(dataBytes)
+	return &dataJSON, nil
 }
 
-func getAPIKey(url string, verb Verb) string {
-	return fmt.Sprintf("%v %v", verb, url)
+func getServiceKey(name, version string) string {
+	return name + "." + version
 }
 
 // RegisterService - Registers a specific service name and version
@@ -119,28 +132,68 @@ func (s *Service) String() string {
 	return fmt.Sprintf("Service(ID=%v, Name=%v, Version=%v)", s.ID, s.Name, s.Version)
 }
 
+func (p Payload) String() string {
+	val, err := InterfaceToJSONString(p)
+	if err != nil {
+		return err.Error()
+	}
+	return *val
+}
+
+func (p Payload) getSeed() ([]byte, error) {
+	var v interface{}
+	jsonDoc := p.String()
+	err := json.Unmarshal([]byte(jsonDoc), &v)
+	if err != nil {
+		return nil, err
+	}
+	payloadSeed, _ := json.Marshal(v)
+	return payloadSeed, nil
+}
+
+func generateAPIID(url string, verb Verb, payload Payload) (*string, error) {
+	keyString := fmt.Sprintf("%v %v", verb, url)
+	if payload != nil {
+		seed, err := payload.getSeed()
+		if err != nil {
+			return nil, fmt.Errorf("Error getting payload seed :: %v", err.Error())
+		}
+		sum := sha256.Sum256(seed)
+		payloadHash := hex.EncodeToString(sum[0:])
+		keyString = fmt.Sprintf("%v/%v", keyString, payloadHash)
+	}
+
+	return &keyString, nil
+}
+
 func (s *Service) registerAPI(api *API) {
 	s.registeredAPIs[api.ID] = api
 }
 
 //RegisterAPI - Registers an API for a given service
-func (s *Service) RegisterAPI(url string, verb Verb) (*API, error) {
-	apiKey := getAPIKey(url, verb)
-	if api, OK := s.registeredAPIs[apiKey]; OK {
+func (s *Service) RegisterAPI(url string, verb Verb, payload Payload) (*API, error) {
+	apiKey, err := generateAPIID(url, verb, payload)
+	if err != nil {
+		return nil, fmt.Errorf("Error generating API ID :: %v", err.Error())
+	}
+	if api, OK := s.registeredAPIs[*apiKey]; OK {
 		return nil, fmt.Errorf("%v already registered with %v", api, s)
 	}
-	api := &API{apiKey, url, verb}
+	api := &API{*apiKey, url, verb, payload}
 	s.registerAPI(api)
 	return api, nil
 }
 
 //RegisterAPIWithLatency - Registers an API for a given service with specified mocked latency
-func (s *Service) RegisterAPIWithLatency(url string, verb Verb, latency float32) (*APIWithLatency, error) {
-	apiKey := getAPIKey(url, verb)
-	if api, OK := s.registeredAPIs[apiKey]; OK {
+func (s *Service) RegisterAPIWithLatency(url string, verb Verb, payload Payload, latency float32) (*APIWithLatency, error) {
+	apiKey, err := generateAPIID(url, verb, payload)
+	if err != nil {
+		return nil, fmt.Errorf("Error generating API ID :: %v", err.Error())
+	}
+	if api, OK := s.registeredAPIs[*apiKey]; OK {
 		return nil, fmt.Errorf("%v already registered with %v", api, s)
 	}
-	api := &APIWithLatency{API{apiKey, url, verb}, latency}
+	api := &APIWithLatency{API{*apiKey, url, verb, payload}, latency}
 	s.registerAPI(&(api.API))
 	return api, nil
 }
