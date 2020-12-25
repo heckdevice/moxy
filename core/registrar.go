@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	json "encoding/json"
 	"fmt"
+	"net/http"
 )
 
 // Verb - Represent the HTTP Verb enum type
@@ -12,6 +13,11 @@ type Verb int
 
 // Payload - Represent generic HTTP JSON payload
 type Payload map[string]interface{}
+
+// MockedRespone - Represents mocked response for an API
+type MockedResponse struct {
+	http.Response
+}
 
 // Service - Baseline struct for a mocker service
 type Service struct {
@@ -27,6 +33,7 @@ type API struct {
 	URL        string  `json:"url"`
 	APIVerb    Verb    `json:"api_verb"`
 	APIPayload Payload `json:"api_payload"`
+	ServiceID  string  `json:"service_id"`
 }
 
 // APIWithLatency - Configure a mock api like base API struct but with simulated Latency
@@ -68,8 +75,8 @@ type ServiceRegistration interface {
 
 // APIRegistration - API Registration features
 type APIRegistration interface {
-	RegisterAPI(url string, httpVerb Verb, payload Payload) (*API, error)
-	RegisterAPIWithLatency(url string, httpVerb Verb, payload Payload) (*APIWithLatency, error)
+	RegisterAPI(url string, httpVerb Verb, payload Payload, resp *MockedResponse) (*API, error)
+	RegisterAPIWithLatency(url string, httpVerb Verb, payload Payload, resp *MockedResponse) (*APIWithLatency, error)
 }
 
 // Feature Implementations
@@ -152,18 +159,17 @@ func (p Payload) getSeed() ([]byte, error) {
 }
 
 func generateAPIID(url string, verb Verb, payload Payload) (*string, error) {
-	keyString := fmt.Sprintf("%v %v", verb, url)
+	apiIDSeed := []byte(fmt.Sprintf("%v %v", verb, url))
 	if payload != nil {
-		seed, err := payload.getSeed()
+		payloadSeed, err := payload.getSeed()
 		if err != nil {
 			return nil, fmt.Errorf("Error getting payload seed :: %v", err.Error())
 		}
-		sum := sha256.Sum256(seed)
-		payloadHash := hex.EncodeToString(sum[0:])
-		keyString = fmt.Sprintf("%v/%v", keyString, payloadHash)
+		apiIDSeed = append(apiIDSeed, payloadSeed...)
 	}
-
-	return &keyString, nil
+	sum := sha256.Sum256(apiIDSeed)
+	apiID := hex.EncodeToString(sum[0:])
+	return &apiID, nil
 }
 
 func (s *Service) registerAPI(api *API) {
@@ -171,7 +177,7 @@ func (s *Service) registerAPI(api *API) {
 }
 
 //RegisterAPI - Registers an API for a given service
-func (s *Service) RegisterAPI(url string, verb Verb, payload Payload) (*API, error) {
+func (s *Service) RegisterAPI(url string, verb Verb, payload Payload, response *MockedResponse) (*API, error) {
 	apiKey, err := generateAPIID(url, verb, payload)
 	if err != nil {
 		return nil, fmt.Errorf("Error generating API ID :: %v", err.Error())
@@ -179,13 +185,13 @@ func (s *Service) RegisterAPI(url string, verb Verb, payload Payload) (*API, err
 	if api, OK := s.registeredAPIs[*apiKey]; OK {
 		return nil, fmt.Errorf("%v already registered with %v", api, s)
 	}
-	api := &API{*apiKey, url, verb, payload}
+	api := &API{*apiKey, url, verb, payload, s.ID}
 	s.registerAPI(api)
 	return api, nil
 }
 
 //RegisterAPIWithLatency - Registers an API for a given service with specified mocked latency
-func (s *Service) RegisterAPIWithLatency(url string, verb Verb, payload Payload, latency float32) (*APIWithLatency, error) {
+func (s *Service) RegisterAPIWithLatency(url string, verb Verb, payload Payload, latency float32, response *MockedResponse) (*APIWithLatency, error) {
 	apiKey, err := generateAPIID(url, verb, payload)
 	if err != nil {
 		return nil, fmt.Errorf("Error generating API ID :: %v", err.Error())
@@ -193,7 +199,15 @@ func (s *Service) RegisterAPIWithLatency(url string, verb Verb, payload Payload,
 	if api, OK := s.registeredAPIs[*apiKey]; OK {
 		return nil, fmt.Errorf("%v already registered with %v", api, s)
 	}
-	api := &APIWithLatency{API{*apiKey, url, verb, payload}, latency}
+	api := &APIWithLatency{API{*apiKey, url, verb, payload, s.ID}, latency}
 	s.registerAPI(&(api.API))
 	return api, nil
+}
+
+// GetAPI - Fetches registered api by api id, errs if not found
+func (s *Service) GetAPI(apiID string) (*API, error) {
+	if api, OK := s.registeredAPIs[apiID]; OK {
+		return api, nil
+	}
+	return nil, fmt.Errorf("API, Service (%v, %v) combination not found", apiID, s.ID)
 }
