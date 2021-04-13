@@ -16,25 +16,23 @@ jobs:
             go fmt ./...
             go vet ./...
             go test -v ./...
-  deploy:
-    docker:
-      - image: circleci/golang:1.16.3
-    working_directory: /go/src/github.com/heckdevice/moxy
-    steps:
-      - checkout
-      - run: go get -u github.com/mitchellh/gox
-      - run: go get -u github.com/tcnksm/ghr
-      - run: go get -u github.com/stevenmatthewt/semantics
-      - run:
-          name: cross compile
-          command: |
-            gox -os="linux darwin windows" -arch="amd64" -output="dist/moxy_{{.OS}}_{{.Arch}}"
+  docker:
+      environment:
+        IMAGE_NAME: jsrcorp/moxy
+      docker:
+        - image: circleci/buildpack-deps:stretch
+      steps:
+        - checkout
+        - setup_remote_docker
+        - run:
+            name: Build Moxy docker image
+            command: make build
 workflows:
   version: 2
-  build-deploy:
+  build-docker:
     jobs:
       - build
-      - deploy:
+      - docker:
           requires:
             - build
           filters:
