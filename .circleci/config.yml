@@ -28,7 +28,8 @@ jobs:
       - run:
           name: cross compile
           command: |
-            gox -os="linux darwin windows" -arch="amd64" -output="dist/moxy_{{.OS}}_{{.Arch}}"
+            make up
+            #gox -os="linux darwin windows" -arch="amd64" -output="dist/moxy_{{.OS}}_{{.Arch}}"
 workflows:
   version: 2
   build-deploy:
